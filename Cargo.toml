@@ -1,0 +1,9 @@
+[package]
+name = "weave"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+quaternion = "2.0.0"
+vecmath = "1.0.0"
+vector3d = "0.2.1"
