@@ -2,7 +2,7 @@ mod split;
 
 // use vector3d::Vector3d;
 use vecmath::{Vector3, vec3_normalized};
-use quaternion::{rotation_from_to, rotate_vector, axis_angle, mul};
+use quaternion::{rotation_from_to, rotate_vector, axis_angle, mul, dot};
 
 pub fn add(left: u64, right: u64) -> u64 {
     left + right
@@ -33,17 +33,20 @@ pub fn z_point(a: Vector3<f64>, b: Vector3<f64>) -> Vector3<f64> {
     // Strategy: Do a binary search between theta_ac and theta_ac/2
     let q_ab = rotation_from_to(a, b);
     let theta_ab = 2.0 * q_ab.0.acos();
-    let mut theta_low = theta_ab/2.0;
+    let axis_ab = vec3_normalized(q_ab.1);
+    let axis_a = vec3_normalized(a);
+
+    let mut theta_low = theta_ab/4.0;
     let mut theta_high = theta_ab;
     while theta_high-theta_low > THETA_ACCURACY {
         let theta_test = (theta_high+theta_low)/2.0;
 
         // Rotate by theta_test about Z.
-        let q1 = axis_angle([0.0, 0.0, 1.0], theta_test);
+        let q1 = axis_angle(axis_ab, theta_test);
         // Turn -60 degrees about X.
-        let q2 = axis_angle([1.0, 0.0, 0.0], (60.0_f64).to_radians());
+        let q2 = axis_angle(axis_a, (60.0_f64).to_radians());
         // Rotate by theta_test/2 about Z.
-        let q3 = axis_angle([0.0, 0.0, 1.0], theta_test/2.0);
+        let q3 = axis_angle(axis_ab, theta_test/2.0);
         
         let q = mul(q3, mul(q2, q1));
         let theta_result = q.0.acos()/2.0;
@@ -57,10 +60,27 @@ pub fn z_point(a: Vector3<f64>, b: Vector3<f64>) -> Vector3<f64> {
     }
     let theta_ac = (theta_high+theta_low)/2.0;
 
-    println!("Theta ac found as {theta_ac}");
+    println!("Theta ac found as {} degrees", theta_ac.to_degrees());
 
+    // Rotate by theta_test about Z.
+    let q1 = axis_angle(axis_ab, theta_ac);
+    // Turn -60 degrees about X.
+    let q2 = axis_angle(axis_a, (60.0_f64).to_radians());
+    // Rotate by theta_test/2 about Z.
+    let q3 = axis_angle(axis_ab, theta_ac/2.0);
+    
+    let q = mul(q1, mul(q2, q3));
 
-    [0.0, 0.0, 0.0]
+    // Find angle between current ab and q
+    let phi = dot(q_ab, q).acos();
+    println!("  Phi is {phi} ({} degrees)", phi.to_degrees());
+
+    // Now, to get to c, we need to turn by phi around axis a, then q1.
+    let q_phi = axis_angle(a, phi);
+    let q_c = mul(q_phi, q1);
+    let c = rotate_vector(q_c, a);
+
+    c
 }
 
 pub fn z_split(a: Vector3<f64>, b: Vector3<f64>) -> (Vector3<f64>, Vector3<f64>) {
@@ -70,7 +90,6 @@ pub fn z_split(a: Vector3<f64>, b: Vector3<f64>) -> (Vector3<f64>, Vector3<f64>)
     let d = z_point(b, mid);
 
     (c, d)
-
 }
 
 #[cfg(test)]
@@ -95,9 +114,10 @@ mod tests {
     #[test]
     fn test_split() {
         let a: Vector3::<f64> = [1.0, 0.0, 0.0];
-        let b: Vector3::<f64> = [1.0, 1.0, 0.0];
+        let b: Vector3::<f64> = [0.0, 1.0, 0.0];
         let (c, d) = z_split(a, b);
 
-        println!("Mid: {:?}", c);
+        println!("c: {c:?}");
+        println!("d: {d:?}");
     }
 }
