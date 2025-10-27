@@ -1,7 +1,7 @@
 mod split;
 
 // use vector3d::Vector3d;
-use vecmath::{Vector3, vec3_normalized, vec3_dot};
+use vecmath::{Vector3, vec3_normalized, vec3_dot, vec3_cross};
 use quaternion::{rotation_from_to, rotate_vector, axis_angle, mul};
 
 pub fn add(left: u64, right: u64) -> u64 {
@@ -31,12 +31,12 @@ pub fn z_point(a: Vector3<f64>, b: Vector3<f64>) -> Vector3<f64> {
     // First task: figure out theta_ac, the distance to point c.
     // Let theta_ab be the full distance from a to b.
     // Strategy: Do a binary search between theta_ab and theta_ab/4
-    // Try to find theta_ac that yields the full three-rotation sequence
-    // with distance theta_ab.
-    let q_ab = rotation_from_to(a, b);
-    let theta_ab = vec3_dot(a, b).acos();
-    let axis_ab = vec3_normalized(q_ab.1);
-    let axis_a = vec3_normalized(a);
+    // For each test angle, use the law of cosines to find the length of
+    // the resulting steps, then refine the search.
+
+    // let q_ab = rotation_from_to(a, b);
+    let cos_theta_ab = vec3_dot(a, b);
+    let theta_ab = cos_theta_ab.acos();
 
     // Bracket the theta_ac value we need.
     let mut theta_low = theta_ab/4.0;
@@ -47,18 +47,11 @@ pub fn z_point(a: Vector3<f64>, b: Vector3<f64>) -> Vector3<f64> {
         // Pick a theta to test from the middle of the range
         let theta_test = (theta_high+theta_low)/2.0;
 
-        // Rotate by theta_test about axb axis
-        let q1 = axis_angle(axis_ab, theta_test);
-        // Turn -60 degrees about a axis
-        let q2 = axis_angle(axis_a, (-60.0_f64).to_radians());
-        // Rotate by theta_test/2 about axb axis
-        let q3 = axis_angle(axis_ab, theta_test/2.0);
-        
-        let q = mul(mul(q1, q2), q3);
-        let result = rotate_vector(q, a);
+        // from law of cosines on a sphere.
+        let cos_theta_result = theta_test.cos()*(theta_test/2.0).cos()
+                             + (-0.5_f64)*theta_test.sin()*(theta_test/2.0).sin();
 
-        // Measure full angle covered by the three rotations.
-        let theta_result = vec3_dot(a, result).acos();
+        let theta_result = cos_theta_result.acos();
 
         // Decide whether to search higher or lower than theta_test.
         if theta_result > theta_ab {
@@ -73,35 +66,19 @@ pub fn z_point(a: Vector3<f64>, b: Vector3<f64>) -> Vector3<f64> {
     // We have theta_ac, the distance for the a-c segment.
     let theta_ac = (theta_high+theta_low)/2.0;
 
-    // Next step, find phi, the initial rotation away from the ab line.
-    // Strategy is to follow the three rotations above without phi and
-    // see what angle that makes with the ab line.  Setting phi to that 
-    // amount should result in a sequence of 4 rotations that start at
-    // a, turn by phi, traverse to c, turn 60 degrees, traverse to b.
+    // Next step, find phi, using the law of cosines, now that we know the sides of this triangle.
+    let cos_phi = (((theta_ac/2.0).cos() - theta_ac.cos()*theta_ab.cos())) / (theta_ac.sin()*theta_ab.sin());
+    let phi = cos_phi.acos();
 
-    // Generate three rotation quaterions based on theta_ac.
+    let axis_ab = vec3_normalized(vec3_cross(a, b));
     let q1 = axis_angle(axis_ab, theta_ac);
-    // Turn -60 degrees about a
-    let q2 = axis_angle(axis_a, (-60.0_f64).to_radians());
-    // Rotate by theta_test/2 about axb
-    let q3 = axis_angle(axis_ab, theta_ac/2.0);
-    
-    // The combination of those three rotations.
-    let q = mul(mul(q1, q2), q3);
-
-    // Send a through those three rotations.
-    let result = rotate_vector(q, a);
-    // Get that as a direct rotation quaterion, (which is different from q).
-    let q_result = rotation_from_to(a, result);
-
-    // Find angle between current a->b and a->result
-    let phi = vec3_dot(vec3_normalized(q_ab.1), vec3_normalized(q_result.1)).acos();
 
     // Now, to get to c, we start from a, rotate phi then q1
     let q_phi = axis_angle(a, phi);
     let q_c = mul(q_phi, q1); // q1 * q_phi?
     let c = rotate_vector(q_c, a);
 
+    // Point c is the value we needed to compute
     c
 }
 
